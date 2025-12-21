@@ -1,0 +1,25 @@
+# StoryNet Generator Configuration
+#
+# Configure your LLM API for story generation.
+
+generator:
+  mode: "api"
+
+  api:
+    # Provider: "openai" | "gemini"
+    provider: "openai"
+
+    # Environment variable containing API key
+    # OpenAI: OPENAI_API_KEY
+    # Gemini: GEMINI_API_KEY
+    # Zhipu: ZHIPU_API_KEY
+    api_key_env: "OPENAI_API_KEY"
+
+    # Model name
+    # OpenAI: "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"
+    # Gemini: "gemini-2.0-flash-exp", "gemini-1.5-pro"
+    # Zhipu: "glm-4", "glm-4-flash"
+    model: "gpt-4o-mini"
+
+    # Custom endpoint (optional, for OpenAI-compatible APIs)
+    endpoint: null
