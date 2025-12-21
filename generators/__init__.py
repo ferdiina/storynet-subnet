@@ -2,6 +2,7 @@
 StoryNet Generators Module
 
 Provides story generation backends for Bittensor miners.
+Supports both local (Ollama, vLLM) and cloud (OpenAI, Gemini, Zhipu) backends.
 """
 
 from .base import (
@@ -10,7 +11,7 @@ from .base import (
     GeneratorNotInitializedError,
     GeneratorConfigError
 )
-from .api_generator import APIGenerator
+from .llm_generator import LLMGenerator
 from .loader import GeneratorLoader
 
 __all__ = [
@@ -18,6 +19,6 @@ __all__ = [
     "GenerationError",
     "GeneratorNotInitializedError",
     "GeneratorConfigError",
-    "APIGenerator",
+    "LLMGenerator",
     "GeneratorLoader",
 ]

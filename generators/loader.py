@@ -8,7 +8,7 @@ import yaml
 import os
 from typing import Dict, Optional
 from .base import StoryGenerator
-from .api_generator import APIGenerator
+from .llm_generator import LLMGenerator
 
 
 class GeneratorLoader:
@@ -16,6 +16,7 @@ class GeneratorLoader:
     Generator loader for story generation.
 
     Loads generator based on configuration file.
+    Supports both local (Ollama, vLLM) and cloud (OpenAI, Gemini, Zhipu) backends.
 
     Example:
         loader = GeneratorLoader()
@@ -54,8 +55,13 @@ class GeneratorLoader:
         """Return default configuration."""
         return {
             "generator": {
-                "mode": "api",
-                "api": {
+                "mode": "local",
+                "local": {
+                    "type": "ollama",
+                    "url": "http://localhost:11434",
+                    "model": "qwen2.5:7b"
+                },
+                "cloud": {
                     "provider": "openai",
                     "api_key_env": "OPENAI_API_KEY",
                     "model": "gpt-4o-mini"
@@ -66,18 +72,17 @@ class GeneratorLoader:
     def _load_generator(self):
         """Load generator based on config."""
         gen_config = self.config.get("generator", {})
-        api_config = gen_config.get("api", {})
 
         try:
-            gen = APIGenerator(api_config)
+            gen = LLMGenerator(gen_config)
             if gen.available:
                 self.generator = gen
                 return
-        except Exception:
-            pass
+        except Exception as e:
+            raise RuntimeError(f"Failed to load generator: {e}")
 
         raise RuntimeError(
-            "No generator available. Please configure API key in environment."
+            "No generator available. Check your configuration."
         )
 
     async def generate(self, input_data: Dict) -> Dict:
