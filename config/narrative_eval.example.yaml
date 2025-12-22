@@ -16,7 +16,7 @@
 # Enable/disable AI evaluation
 enabled: true
 
-# Backend selection: "ollama", "openai", "custom"
+# Backend selection: "ollama", "openai", "zhipu", "custom"
 backend: ollama
 
 # Ollama settings (if backend: ollama)
@@ -24,8 +24,12 @@ ollama_url: "http://localhost:11434"
 model: "qwen2.5:7b"
 
 # OpenAI settings (if backend: openai)
-# Note: Requires OPENAI_API_KEY environment variable
+# Requires OPENAI_API_KEY environment variable
 openai_model: "gpt-4o-mini"
+
+# Zhipu settings (if backend: zhipu)
+# Requires ZHIPU_API_KEY environment variable
+zhipu_model: "glm-4-flash"
 
 # Custom HTTP endpoint (if backend: custom)
 # custom_url: "http://your-api-endpoint/evaluate"

@@ -31,3 +31,4 @@ wallets/
 # Logs
 *.log
 logs/
+private/

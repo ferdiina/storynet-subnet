@@ -211,6 +211,7 @@ class StoryMiner:
                 f"✅ Generated {synapse.task_type} in {t.elapsed:.2f}s "
                 f"(output: {len(json.dumps(result, ensure_ascii=False))} chars)"
             )
+            bt.logging.info(f"📋 Model info set: {synapse.model_info}")
 
             return synapse
 

@@ -143,14 +143,8 @@ class StoryGenerationSynapse(bt.Synapse):
         description="Miner software version"
     )
 
-    model_info: Dict[str, Any] = Field(
-        default_factory=lambda: {
-            "mode": "unknown",
-            "name": "unknown",
-            "version": None,
-            "provider": None,
-            "parameters": {}
-        },
+    model_info: Optional[Dict[str, Any]] = Field(
+        default=None,
         description="Model information for transparency and quality scoring"
     )
 
