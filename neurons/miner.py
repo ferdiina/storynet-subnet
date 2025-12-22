@@ -48,7 +48,7 @@ class StoryMiner:
 
     """
 
-    def __init__(self, config: bt.config):
+    def __init__(self, config: bt.Config):
         """
         Initialize the miner.
 
@@ -59,9 +59,9 @@ class StoryMiner:
         bt.logging.info("Initializing StoryNet Miner...")
 
         # Initialize Bittensor components
-        self.wallet = bt.wallet(config=self.config)
-        self.subtensor = bt.subtensor(config=self.config)
-        self.metagraph = bt.metagraph(netuid=self.config.netuid, network=self.subtensor.network)
+        self.wallet = bt.Wallet(config=self.config)
+        self.subtensor = bt.Subtensor(config=self.config)
+        self.metagraph = bt.Metagraph(netuid=self.config.netuid, network=self.subtensor.network)
 
         # Initialize Generator (replaces hardcoded OpenAI)
         bt.logging.info("Loading story generator...")
@@ -85,7 +85,7 @@ class StoryMiner:
         """Setup and start the axon server."""
         bt.logging.info("Setting up axon...")
 
-        self.axon = bt.axon(wallet=self.wallet, config=self.config)
+        self.axon = bt.Axon(wallet=self.wallet, config=self.config)
 
         # Override external IP/port if specified in config (for NAT/tunnel scenarios)
         try:
@@ -321,7 +321,7 @@ def get_config():
     parser.add_argument("--axon.external_port", type=int, default=None, help="External port (if different from axon.port)")
 
     # Parse and add bittensor config
-    config = bt.config(parser)
+    config = bt.Config(parser)
 
     return config
 

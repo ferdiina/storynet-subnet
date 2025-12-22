@@ -71,16 +71,16 @@ class StoryValidator:
     5. Detects and blacklists cheating miners
     """
 
-    def __init__(self, config: bt.config):
+    def __init__(self, config: bt.Config):
         """Initialize the validator."""
         self.config = config
         bt.logging.info("Initializing StoryNet Validator...")
 
         # Initialize Bittensor components
-        self.wallet = bt.wallet(config=self.config)
-        self.subtensor = bt.subtensor(config=self.config)
-        self.metagraph = bt.metagraph(netuid=self.config.netuid, network=self.subtensor.network)
-        self.dendrite = bt.dendrite(wallet=self.wallet)
+        self.wallet = bt.Wallet(config=self.config)
+        self.subtensor = bt.Subtensor(config=self.config)
+        self.metagraph = bt.Metagraph(netuid=self.config.netuid, network=self.subtensor.network)
+        self.dendrite = bt.Dendrite(wallet=self.wallet)
 
         # Configuration
         self.query_interval = int(os.getenv("VALIDATOR_QUERY_INTERVAL", "12"))
@@ -946,15 +946,15 @@ def get_config():
     parser = argparse.ArgumentParser()
 
     # Add Bittensor standard arguments
-    bt.subtensor.add_args(parser)
-    bt.wallet.add_args(parser)
+    bt.Subtensor.add_args(parser)
+    bt.Wallet.add_args(parser)
     bt.logging.add_args(parser)
 
     # Add custom arguments
     parser.add_argument("--netuid", type=int, default=92, help="Subnet netuid (StoryNet subnet ID)")
 
     # Parse and add bittensor config
-    config = bt.config(parser)
+    config = bt.Config(parser)
 
     return config
 
