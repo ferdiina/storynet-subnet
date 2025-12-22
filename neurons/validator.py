@@ -691,6 +691,9 @@ class StoryValidator:
     async def run_step(self):
         """Run one validation step."""
         try:
+            # 0. Sync metagraph to get latest miner info
+            self.metagraph.sync(subtensor=self.subtensor)
+
             # 1. Select task type
             task_type = self.select_task_type()
             bt.logging.info(f"🎯 Task type: {task_type}")
@@ -926,10 +929,6 @@ class StoryValidator:
                         f"  Blacklisted: {len(self.blacklist)}\n"
                         f"  Active miners: {len(self.scores)}"
                     )
-
-                # Sync metagraph periodically
-                if self.total_queries % 100 == 0:
-                    self.metagraph.sync(subtensor=self.subtensor)
 
                 # Wait before next query
                 await asyncio.sleep(self.query_interval)
