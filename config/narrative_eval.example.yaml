@@ -104,10 +104,10 @@ evaluation_prompt: |
   - Reserve 0-1 for serious quality issues
 
   Respond with ONLY a JSON object in this exact format:
-  {
+  {{
       "narrative_flow": <score 0-5>,
       "emotional_impact": <score 0-5>,
       "creative_originality": <score 0-5>,
       "internal_consistency": <score 0-5>,
       "brief_notes": "<1-2 sentence summary of key observations>"
-  }
+  }}
