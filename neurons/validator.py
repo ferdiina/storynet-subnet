@@ -89,6 +89,10 @@ class StoryValidator:
         self.temperature = float(os.getenv("SOFTMAX_TEMPERATURE", "2.0"))
         self.weight_update_frequency = int(os.getenv("WEIGHT_UPDATE_FREQ", "100"))
 
+        # Weight submission tracking (block-based rate limiting)
+        self.last_weights_block = 0
+        self.weights_rate_limit = 100  # Default, will be updated from chain
+
         # Task distribution (blueprint:40%, characters:25%, story_arc:25%, chapters:10%)
         self.task_distribution = {
             "blueprint": 0.40,
@@ -627,9 +631,51 @@ class StoryValidator:
 
         return weights
 
-    async def set_weights(self):
-        """Set weights on blockchain."""
+    def can_set_weights(self) -> bool:
+        """
+        Check if we can set weights based on chain rate limit.
+
+        Returns:
+            True if enough blocks have passed since last weight submission
+        """
         try:
+            current_block = self.subtensor.block
+            blocks_since_last = current_block - self.last_weights_block
+
+            # Get rate limit from chain hyperparameters
+            try:
+                self.weights_rate_limit = self.subtensor.weights_rate_limit(self.config.netuid)
+            except Exception:
+                self.weights_rate_limit = 100  # Fallback default
+
+            can_set = blocks_since_last >= self.weights_rate_limit
+
+            if not can_set:
+                blocks_remaining = self.weights_rate_limit - blocks_since_last
+                bt.logging.debug(
+                    f"⏳ Rate limit: {blocks_remaining} blocks remaining "
+                    f"(current: {current_block}, last: {self.last_weights_block}, limit: {self.weights_rate_limit})"
+                )
+            else:
+                bt.logging.info(
+                    f"✅ Can set weights: {blocks_since_last} blocks since last submission "
+                    f"(limit: {self.weights_rate_limit})"
+                )
+
+            return can_set
+
+        except Exception as e:
+            bt.logging.warning(f"Error checking weight rate limit: {e}")
+            return True  # Allow on error to not block weight setting
+
+    async def set_weights(self):
+        """Set weights on blockchain with rate limit check."""
+        try:
+            # Check rate limit first
+            if not self.can_set_weights():
+                bt.logging.info("⏳ Skipping weight submission (rate limit)")
+                return
+
             weights_dict = self.calculate_weights()
 
             if not weights_dict:
@@ -679,8 +725,10 @@ class StoryValidator:
             )
 
             if success:
+                # Update last submission block
+                self.last_weights_block = self.subtensor.block
                 bt.logging.success(f"✅ Weights set successfully: {len(uids)} miners")
-                bt.logging.info(f"   Transaction broadcast to chain")
+                bt.logging.info(f"   Transaction broadcast at block {self.last_weights_block}")
             else:
                 bt.logging.error(f"❌ Failed to set weights: {message}")
 
@@ -890,8 +938,9 @@ class StoryValidator:
             self.successful_queries += len([s for s in scores.values() if s > 0])
             self.total_rewards += sum(scores.values())
 
-            # 8. Set weights periodically
-            if self.total_queries % self.weight_update_frequency == 0:
+            # 8. Set weights (rate limited by blocks, not query count)
+            # Try to set weights every step, let can_set_weights() handle rate limiting
+            if self.can_set_weights():
                 bt.logging.info(f"\n{'='*60}")
                 bt.logging.info(f"Setting weights (query #{self.total_queries})")
                 bt.logging.info(f"{'='*60}")
