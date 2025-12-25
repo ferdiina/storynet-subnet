@@ -238,24 +238,57 @@ class StoryValidator:
 
         return final_score, multiplier_info
 
-    def select_task_type(self) -> str:
-        """Randomly select a task type based on distribution."""
-        return random.choices(
+    def select_task_type(self, block: int) -> str:
+        """
+        Deterministically select a task type based on block number.
+
+        All validators at the same block will select the same task type,
+        ensuring consensus across the network.
+
+        Args:
+            block: Current block number used as random seed
+
+        Returns:
+            Selected task type string
+        """
+        # Save current random state
+        state = random.getstate()
+
+        # Use block as seed for deterministic selection
+        random.seed(block)
+        task_type = random.choices(
             list(self.task_distribution.keys()),
             weights=list(self.task_distribution.values())
         )[0]
 
-    def create_task(self, task_type: str) -> Tuple[StoryGenerationSynapse, Dict[str, Any]]:
+        # Restore random state to not affect other random operations
+        random.setstate(state)
+
+        return task_type
+
+    def create_task(self, task_type: str, block: int) -> Tuple[StoryGenerationSynapse, Dict[str, Any]]:
         """
-        Create a task synapse with mock context.
+        Create a task synapse with mock context using deterministic selection.
+
+        All validators at the same block will create the same task,
+        ensuring consensus across the network.
 
         Args:
             task_type: Type of task to create
+            block: Current block number used as random seed
 
         Returns:
             Tuple of (synapse, context)
         """
+        # Save current random state
+        state = random.getstate()
+
+        # Use block + offset as seed (offset to get different value than task_type selection)
+        random.seed(block + 1000)
         user_input = random.choice(self.sample_prompts)
+
+        # Restore random state
+        random.setstate(state)
         context = {"user_input": user_input}
 
         if task_type == "blueprint":
@@ -742,12 +775,17 @@ class StoryValidator:
             # 0. Sync metagraph to get latest miner info
             self.metagraph.sync(subtensor=self.subtensor)
 
-            # 1. Select task type
-            task_type = self.select_task_type()
+            # Get current block for deterministic consensus
+            # All validators at the same block will make the same selections
+            current_block = self.subtensor.block
+            bt.logging.info(f"🔗 Current block: {current_block}")
+
+            # 1. Select task type (deterministic based on block)
+            task_type = self.select_task_type(current_block)
             bt.logging.info(f"🎯 Task type: {task_type}")
 
-            # 2. Create task
-            synapse, context = self.create_task(task_type)
+            # 2. Create task (deterministic based on block)
+            synapse, context = self.create_task(task_type, current_block)
 
             # 3. Select miners (top 70% + random 30%)
             all_miners = self.metagraph.axons
@@ -766,11 +804,18 @@ class StoryValidator:
                 await asyncio.sleep(self.query_interval)
                 return
 
-            # Select top performers + random exploration
+            # Select miners using deterministic selection based on block
+            # This ensures all validators at the same block select the same miners
             num_miners = min(10, len(available_miners))
+
+            # Use on-chain incentive for ranking (same across all validators)
+            # This is more reliable than local scores which may differ
             sorted_miners = sorted(
                 available_miners,
-                key=lambda x: self.scores.get(x[0], 0),
+                key=lambda x: (
+                    self.metagraph.I[x[0]].item() if x[0] < len(self.metagraph.I) else 0,
+                    self.scores.get(x[0], 0)  # Secondary sort by local score
+                ),
                 reverse=True
             )
 
@@ -778,8 +823,14 @@ class StoryValidator:
             explore_k = num_miners - top_k
 
             selected = sorted_miners[:top_k]
-            if len(sorted_miners) > top_k:
-                selected += random.sample(sorted_miners[top_k:], min(explore_k, len(sorted_miners) - top_k))
+
+            # Deterministic random exploration based on block
+            if len(sorted_miners) > top_k and explore_k > 0:
+                state = random.getstate()
+                random.seed(current_block + 2000)  # Different offset than task selection
+                explore_pool = sorted_miners[top_k:]
+                selected += random.sample(explore_pool, min(explore_k, len(explore_pool)))
+                random.setstate(state)
 
             selected_uids = [uid for uid, _ in selected]
             selected_axons = [axon for _, axon in selected]
