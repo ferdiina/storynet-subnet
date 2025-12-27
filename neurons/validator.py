@@ -852,7 +852,9 @@ class StoryValidator:
 
             # Select miners using deterministic selection based on block
             # This ensures all validators at the same block select the same miners
-            num_miners = min(10, len(available_miners))
+            # Query all available miners (no limit)
+            # This ensures all miners get scored for fair weight distribution
+            num_miners = len(available_miners)
 
             # Sort miners by: 1) local EMA scores (primary), 2) on-chain incentive (secondary)
             # This allows new miners with 0 incentive to be discovered and scored
@@ -867,23 +869,11 @@ class StoryValidator:
             )
 
             # Log miner selection for debugging
-            bt.logging.info(f"🔍 Available miners: {len(available_miners)} (excluded self UID {self.my_uid})")
+            bt.logging.info(f"🔍 Querying ALL {len(available_miners)} available miners (excluded self UID {self.my_uid})")
 
-            top_k = int(num_miners * 0.7)
-            explore_k = num_miners - top_k
-
-            selected = sorted_miners[:top_k]
-
-            # Deterministic random exploration based on block
-            if len(sorted_miners) > top_k and explore_k > 0:
-                state = random.getstate()
-                random.seed(current_block + 2000)  # Different offset than task selection
-                explore_pool = sorted_miners[top_k:]
-                selected += random.sample(explore_pool, min(explore_k, len(explore_pool)))
-                random.setstate(state)
-
-            selected_uids = [uid for uid, _ in selected]
-            selected_axons = [axon for _, axon in selected]
+            # Query all miners - no top_k/explore_k split needed
+            selected_uids = [uid for uid, _ in sorted_miners]
+            selected_axons = [axon for _, axon in sorted_miners]
 
             bt.logging.info(f"📡 Querying {len(selected_axons)} miners: {selected_uids}")
 
