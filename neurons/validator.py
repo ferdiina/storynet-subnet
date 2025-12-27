@@ -82,6 +82,10 @@ class StoryValidator:
         self.metagraph = bt.Metagraph(netuid=self.config.netuid, network=self.subtensor.network)
         self.dendrite = bt.Dendrite(wallet=self.wallet)
 
+        # Get validator's own UID (to exclude from miner selection)
+        self.my_uid = self._get_my_uid()
+        bt.logging.info(f"✅ Validator UID: {self.my_uid}")
+
         # Configuration
         self.query_interval = int(os.getenv("VALIDATOR_QUERY_INTERVAL", "12"))
         self.timeout = int(os.getenv("VALIDATOR_TIMEOUT", "60"))
@@ -131,6 +135,24 @@ class StoryValidator:
         bt.logging.info(f"✅ Netuid: {self.config.netuid}")
         bt.logging.info(f"✅ Query interval: {self.query_interval}s")
         bt.logging.info(f"✅ Model quality policy loaded")
+
+    def _get_my_uid(self) -> Optional[int]:
+        """
+        Get the validator's own UID from the metagraph.
+
+        Returns:
+            The validator's UID, or None if not found
+        """
+        try:
+            my_hotkey = self.wallet.hotkey.ss58_address
+            for uid, hotkey in enumerate(self.metagraph.hotkeys):
+                if hotkey == my_hotkey:
+                    return uid
+            bt.logging.warning(f"Validator hotkey {my_hotkey} not found in metagraph")
+            return None
+        except Exception as e:
+            bt.logging.error(f"Error getting validator UID: {e}")
+            return None
 
     def _load_model_policy(self) -> Dict[str, Any]:
         """Load model quality policy from YAML file."""
@@ -788,14 +810,20 @@ class StoryValidator:
             synapse, context = self.create_task(task_type, current_block)
 
             # 3. Select miners (top 70% + random 30%)
+            # IMPORTANT: Exclude self (validator's own UID) from miner selection
+            # to prevent self-scoring and circular weight assignment
             all_miners = self.metagraph.axons
             available_miners = [
                 (i, axon) for i, axon in enumerate(all_miners)
-                if i not in self.blacklist and self._is_axon_valid(axon)
+                if i not in self.blacklist
+                and i != self.my_uid  # Exclude self!
+                and self._is_axon_valid(axon)
             ]
 
             # Log filtered miners count
             filtered_count = len(all_miners) - len(available_miners) - len(self.blacklist)
+            if self.my_uid is not None:
+                filtered_count -= 1  # Account for self-exclusion
             if filtered_count > 0:
                 bt.logging.debug(f"Filtered out {filtered_count} invalid axons (0.0.0.0 or invalid config)")
 
@@ -808,16 +836,20 @@ class StoryValidator:
             # This ensures all validators at the same block select the same miners
             num_miners = min(10, len(available_miners))
 
-            # Use on-chain incentive for ranking (same across all validators)
-            # This is more reliable than local scores which may differ
+            # Sort miners by: 1) local EMA scores (primary), 2) on-chain incentive (secondary)
+            # This allows new miners with 0 incentive to be discovered and scored
+            # Note: Initially all scores are 0, so we use deterministic random for fair bootstrapping
             sorted_miners = sorted(
                 available_miners,
                 key=lambda x: (
-                    self.metagraph.I[x[0]].item() if x[0] < len(self.metagraph.I) else 0,
-                    self.scores.get(x[0], 0)  # Secondary sort by local score
+                    self.scores.get(x[0], 0),  # Primary: local EMA score
+                    self.metagraph.I[x[0]].item() if x[0] < len(self.metagraph.I) else 0,  # Secondary: on-chain
                 ),
                 reverse=True
             )
+
+            # Log miner selection for debugging
+            bt.logging.info(f"🔍 Available miners: {len(available_miners)} (excluded self UID {self.my_uid})")
 
             top_k = int(num_miners * 0.7)
             explore_k = num_miners - top_k
