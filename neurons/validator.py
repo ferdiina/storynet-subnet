@@ -574,20 +574,25 @@ class StoryValidator:
 
         return intersection / union if union > 0 else 0.0
 
-    def _is_axon_valid(self, axon: bt.AxonInfo) -> bool:
+    def _is_miner_available(self, uid: int, axon: bt.AxonInfo) -> bool:
         """
-        Check if an axon is valid for connection.
+        Check if a miner is available for querying.
+
+        This follows the official Bittensor subnet template pattern.
 
         Filters out:
         - 0.0.0.0 IP addresses (unregistered/invalid)
         - Invalid ports
         - Missing hotkeys
+        - Validators with high stake (validator_permit && stake > 1024 TAO)
+        - The validator itself (self.my_uid)
 
         Args:
+            uid: The UID to check
             axon: AxonInfo object to check
 
         Returns:
-            True if axon is valid, False otherwise
+            True if miner is available, False otherwise
         """
         # Check if IP is not None or empty
         if not axon.ip:
@@ -607,6 +612,20 @@ class StoryValidator:
         if not axon.hotkey:
             bt.logging.debug("Filtered axon with missing hotkey")
             return False
+
+        # Exclude self (validator's own UID) - critical for preventing self-scoring!
+        if uid == self.my_uid:
+            bt.logging.debug(f"Filtered self (UID {uid})")
+            return False
+
+        # Follow official template: exclude validators with high stake
+        # This prevents querying other validators as if they were miners
+        vpermit_tao_limit = 1024  # Official default
+        if self.metagraph.validator_permit[uid]:
+            stake = self.metagraph.S[uid].item()
+            if stake > vpermit_tao_limit:
+                bt.logging.debug(f"Filtered validator with high stake (UID {uid}, stake={stake:.0f})")
+                return False
 
         return True
 
@@ -809,21 +828,20 @@ class StoryValidator:
             # 2. Create task (deterministic based on block)
             synapse, context = self.create_task(task_type, current_block)
 
-            # 3. Select miners (top 70% + random 30%)
-            # IMPORTANT: Exclude self (validator's own UID) from miner selection
-            # to prevent self-scoring and circular weight assignment
+            # 3. Select miners using official Bittensor template pattern
+            # _is_miner_available() excludes:
+            #   - Invalid axons (0.0.0.0)
+            #   - Self (validator's own UID)
+            #   - High-stake validators (validator_permit && stake > 1024)
+            #   - Blacklisted miners
             all_miners = self.metagraph.axons
             available_miners = [
-                (i, axon) for i, axon in enumerate(all_miners)
-                if i not in self.blacklist
-                and i != self.my_uid  # Exclude self!
-                and self._is_axon_valid(axon)
+                (uid, axon) for uid, axon in enumerate(all_miners)
+                if uid not in self.blacklist and self._is_miner_available(uid, axon)
             ]
 
             # Log filtered miners count
             filtered_count = len(all_miners) - len(available_miners) - len(self.blacklist)
-            if self.my_uid is not None:
-                filtered_count -= 1  # Account for self-exclusion
             if filtered_count > 0:
                 bt.logging.debug(f"Filtered out {filtered_count} invalid axons (0.0.0.0 or invalid config)")
 
