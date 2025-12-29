@@ -82,10 +82,6 @@ class StoryValidator:
         self.metagraph = bt.Metagraph(netuid=self.config.netuid, network=self.subtensor.network)
         self.dendrite = bt.Dendrite(wallet=self.wallet)
 
-        # Get validator's own UID (to exclude from miner selection)
-        self.my_uid = self._get_my_uid()
-        bt.logging.info(f"✅ Validator UID: {self.my_uid}")
-
         # Configuration
         self.query_interval = int(os.getenv("VALIDATOR_QUERY_INTERVAL", "12"))
         self.timeout = int(os.getenv("VALIDATOR_TIMEOUT", "60"))
@@ -135,24 +131,6 @@ class StoryValidator:
         bt.logging.info(f"✅ Netuid: {self.config.netuid}")
         bt.logging.info(f"✅ Query interval: {self.query_interval}s")
         bt.logging.info(f"✅ Model quality policy loaded")
-
-    def _get_my_uid(self) -> Optional[int]:
-        """
-        Get the validator's own UID from the metagraph.
-
-        Returns:
-            The validator's UID, or None if not found
-        """
-        try:
-            my_hotkey = self.wallet.hotkey.ss58_address
-            for uid, hotkey in enumerate(self.metagraph.hotkeys):
-                if hotkey == my_hotkey:
-                    return uid
-            bt.logging.warning(f"Validator hotkey {my_hotkey} not found in metagraph")
-            return None
-        except Exception as e:
-            bt.logging.error(f"Error getting validator UID: {e}")
-            return None
 
     def _load_model_policy(self) -> Dict[str, Any]:
         """Load model quality policy from YAML file."""
@@ -585,7 +563,6 @@ class StoryValidator:
         - Invalid ports
         - Missing hotkeys
         - Validators with high stake (validator_permit && stake > 1024 TAO)
-        - The validator itself (self.my_uid)
 
         Args:
             uid: The UID to check
@@ -611,11 +588,6 @@ class StoryValidator:
         # Check if hotkey is not empty
         if not axon.hotkey:
             bt.logging.debug("Filtered axon with missing hotkey")
-            return False
-
-        # Exclude self (validator's own UID) - critical for preventing self-scoring!
-        if uid == self.my_uid:
-            bt.logging.debug(f"Filtered self (UID {uid})")
             return False
 
         # Follow official template: exclude validators with high stake
@@ -869,7 +841,7 @@ class StoryValidator:
             )
 
             # Log miner selection for debugging
-            bt.logging.info(f"🔍 Querying ALL {len(available_miners)} available miners (excluded self UID {self.my_uid})")
+            bt.logging.info(f"🔍 Querying ALL {len(available_miners)} available miners")
 
             # Query all miners - no top_k/explore_k split needed
             selected_uids = [uid for uid, _ in sorted_miners]
