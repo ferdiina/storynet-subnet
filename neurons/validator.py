@@ -562,7 +562,6 @@ class StoryValidator:
         - 0.0.0.0 IP addresses (unregistered/invalid)
         - Invalid ports
         - Missing hotkeys
-        - Validators with high stake (validator_permit && stake > 1024 TAO)
 
         Args:
             uid: The UID to check
@@ -589,15 +588,6 @@ class StoryValidator:
         if not axon.hotkey:
             bt.logging.debug("Filtered axon with missing hotkey")
             return False
-
-        # Follow official template: exclude validators with high stake
-        # This prevents querying other validators as if they were miners
-        vpermit_tao_limit = 1024  # Official default
-        if self.metagraph.validator_permit[uid]:
-            stake = self.metagraph.S[uid].item()
-            if stake > vpermit_tao_limit:
-                bt.logging.debug(f"Filtered validator with high stake (UID {uid}, stake={stake:.0f})")
-                return False
 
         return True
 
@@ -800,12 +790,8 @@ class StoryValidator:
             # 2. Create task (deterministic based on block)
             synapse, context = self.create_task(task_type, current_block)
 
-            # 3. Select miners using official Bittensor template pattern
-            # _is_miner_available() excludes:
-            #   - Invalid axons (0.0.0.0)
-            #   - Self (validator's own UID)
-            #   - High-stake validators (validator_permit && stake > 1024)
-            #   - Blacklisted miners
+            # 3. Select miners
+            # _is_miner_available() excludes invalid axons (0.0.0.0, missing hotkey, etc.)
             all_miners = self.metagraph.axons
             available_miners = [
                 (uid, axon) for uid, axon in enumerate(all_miners)
