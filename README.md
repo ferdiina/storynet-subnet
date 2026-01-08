@@ -94,6 +94,35 @@ python neurons/validator.py \
     --subtensor.network finney \
     --logging.info
 ```
+### 🐳 Run Validator with Docker + Watchtower
+This guide shows how to deploy the validator using Docker Compose, with automatic updates via Watchtower. 
+The validator will run on port 19292, and requires your Bittensor wallet files to be located in ~/.bittensor.
+
+🛠️ Setup Instructions
+```bash
+# Setup .env File
+cd Docker/validator
+cp .env_example .env
+nano .env # or use any editor: vim, code, etc.
+```
+
+🛠️Edit the following required fields:
+```env
+#setup your env
+WALLET_NAME=default
+HOTKEY_NAME=default
+# Choose ONE of the following:
+ZHIPU_API_KEY=your_zhipu_api_key_here
+# OR
+OPENAI_API_KEY=sk-your-openai-api-key-here
+```
+🔐 Never commit .env to version control. It should be in your .gitignore.
+
+🚀Deploy with Docker Compose
+
+```bash
+docker compose down && docker compose pull && docker compose up -d && docker compose logs -f
+```
 
 ## Scoring System
 
