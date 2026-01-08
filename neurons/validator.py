@@ -614,7 +614,8 @@ class StoryValidator:
         """
         try:
             # Get subnet owner's hotkey from chain
-            owner_hotkey = self.subtensor.get_subnet_owner(self.config.netuid)
+            # Note: API is get_subnet_owner_hotkey() not get_subnet_owner()
+            owner_hotkey = self.subtensor.get_subnet_owner_hotkey(self.config.netuid)
 
             if owner_hotkey is None:
                 bt.logging.warning(f"Could not get subnet owner for netuid {self.config.netuid}")
