@@ -603,20 +603,63 @@ class StoryValidator:
                     self.ema_alpha
                 )
 
+    def get_burn_uid(self) -> int:
+        """
+        Get the subnet owner's UID (burn_uid).
+        The owner UID is excluded from miner weight calculation and receives remaining weight.
+        This is inspired by DogeLayer's burn_uid mechanism.
+
+        Returns:
+            The UID of the subnet owner, or -1 if not found.
+        """
+        try:
+            # Get subnet owner's hotkey from chain
+            owner_hotkey = self.subtensor.get_subnet_owner(self.config.netuid)
+
+            if owner_hotkey is None:
+                bt.logging.warning(f"Could not get subnet owner for netuid {self.config.netuid}")
+                return -1
+
+            # Find the UID corresponding to this hotkey in metagraph
+            for uid in range(len(self.metagraph.hotkeys)):
+                if self.metagraph.hotkeys[uid] == owner_hotkey:
+                    bt.logging.info(f"🔥 Burn UID (subnet owner): {uid}")
+                    return uid
+
+            bt.logging.warning(f"Subnet owner hotkey not found in metagraph: {owner_hotkey}")
+            return -1
+
+        except Exception as e:
+            bt.logging.error(f"Error getting burn_uid: {e}")
+            return -1
+
     def calculate_weights(self) -> Dict[int, float]:
         """
         Calculate weights using 3-factor system (inspired by SoulX):
         - 15% Stake weight (防止新矿工作弊)
         - 75% Quality score (当前表现)
         - 10% Historical score (长期稳定性)
+
+        Burn UID mechanism (inspired by DogeLayer):
+        - Owner UID is excluded from miner scoring
+        - Remaining weight (after miners) is assigned to Owner
         """
         if not self.scores:
             return {}
 
+        # Get burn_uid (subnet owner) to exclude from miner weights
+        burn_uid = self.get_burn_uid()
+
         # Calculate composite scores with stake consideration
+        # IMPORTANT: Exclude burn_uid (owner) from miner scoring
         composite_scores = {}
 
         for uid, quality_score in self.scores.items():
+            # Skip burn_uid - owner is not a miner
+            if uid == burn_uid:
+                bt.logging.debug(f"Skipping burn_uid {uid} from miner scoring")
+                continue
+
             # 1. Get stake weight
             try:
                 stake = self.metagraph.S[uid].item()
@@ -655,15 +698,44 @@ class StoryValidator:
             for uid, score in composite_scores.items()
         }
 
-        # Normalize
+        # Normalize miner weights to sum to 1.0 first
         weights = normalize_weights(incentives)
 
         # Apply minimum weight (防止完全归零)
         min_weight = 0.001
         weights = {uid: max(w, min_weight) for uid, w in weights.items()}
 
-        # Re-normalize
+        # Re-normalize miner weights
         weights = normalize_weights(weights)
+
+        # === Burn UID mechanism ===
+        # Scale miner weights to leave room for owner, then assign remaining to owner
+        # Owner gets a portion based on miner count (more miners = less owner share)
+        # This ensures owner participates in emissions while not competing with miners
+        if burn_uid >= 0:
+            num_miners = len(weights)
+            if num_miners > 0:
+                # Owner share: starts at 50% with few miners, decreases as more miners join
+                # Formula: owner_share = max(0.1, 0.5 - 0.01 * num_miners)
+                # With 10 miners: 40%, 20 miners: 30%, 40 miners: 10% (minimum)
+                owner_share = max(0.10, 0.50 - 0.01 * num_miners)
+                miner_share = 1.0 - owner_share
+
+                # Scale miner weights
+                weights = {uid: w * miner_share for uid, w in weights.items()}
+
+                # Assign remaining weight to owner
+                weights[burn_uid] = owner_share
+
+                bt.logging.info(
+                    f"🔥 Burn UID allocation: owner_uid={burn_uid}, "
+                    f"owner_share={owner_share:.2%}, miner_share={miner_share:.2%} "
+                    f"({num_miners} miners)"
+                )
+            else:
+                # No miners, give all weight to owner
+                weights[burn_uid] = 1.0
+                bt.logging.info(f"🔥 No miners found, all weight to owner UID {burn_uid}")
 
         return weights
 
